@@ -396,6 +396,262 @@ TEST_F (organizedPointCloudTest, organized_concatenate)
   EXPECT_EQ (organized_cloud_out.width, total_size);
 }
 
+//////////////////////////////////////////////
+struct customAllocatorPointCloudTest : public testing::Test {
+  PCL_MAKE_ALIGNED_OPERATOR_NEW
+  protected:
+    CustomAllocatorPointCloud<PointXYZ, std::allocator<PointXYZ> > cloud(std::allocator<PointXYZ> ());
+};
+
+TEST_F (customAllocatorPointCloudTest, is_organized)
+{
+  cloud.width = 640;
+  cloud.height = 480;
+  EXPECT_TRUE (cloud.isOrganized ());
+}
+
+TEST_F (customAllocatorPointCloudTest, not_organized)
+{
+  cloud.width = 640;
+  cloud.height = 1;
+  EXPECT_FALSE (cloud.isOrganized ());
+}
+
+TEST_F (customAllocatorPointCloudTest, getMatrixXfMap)
+{
+  cloud.height = 1;
+  cloud.width = 10;
+  for (std::uint32_t i = 0; i < cloud.width*cloud.height; ++i)
+  {
+    float j = static_cast<float> (i);
+    cloud.emplace_back(3.0f * j + 0.0f, 3.0f * j + 1.0f, 3.0f * j + 2.0f);
+  }
+
+  Eigen::MatrixXf mat_xyz1 = cloud.getMatrixXfMap ();
+  Eigen::MatrixXf mat_xyz = cloud.getMatrixXfMap (3, 4, 0);
+
+  if (Eigen::MatrixXf::Flags & Eigen::RowMajorBit)
+  {
+    EXPECT_EQ (mat_xyz1.cols (), 4);
+    EXPECT_EQ (mat_xyz1.rows (), cloud.width);
+    EXPECT_EQ (mat_xyz1 (0, 0), 0);
+    EXPECT_EQ (mat_xyz1 (cloud.width - 1, 2), 3 * cloud.width - 1);   // = 29
+
+    EXPECT_EQ (mat_xyz.cols (), 3);
+    EXPECT_EQ (mat_xyz.rows (), cloud.width);
+    EXPECT_EQ (mat_xyz (0, 0), 0);
+    EXPECT_EQ (mat_xyz (cloud.width - 1, 2), 3 * cloud.width - 1);    // = 29
+  }
+  else
+  {
+    EXPECT_EQ (mat_xyz1.cols (), cloud.width);
+    EXPECT_EQ (mat_xyz1.rows (), 4);
+    EXPECT_EQ (mat_xyz1 (0, 0), 0);
+    EXPECT_EQ (mat_xyz1 (2, cloud.width - 1), 3 * cloud.width - 1);   // = 29
+
+    EXPECT_EQ (mat_xyz.cols (), cloud.width);
+    EXPECT_EQ (mat_xyz.rows (), 3);
+    EXPECT_EQ (mat_xyz (0, 0), 0);
+    EXPECT_EQ (mat_xyz (2, cloud.width - 1), 3 * cloud.width - 1);    // = 29
+  }
+
+#ifdef NDEBUG
+  if (Eigen::MatrixXf::Flags & Eigen::RowMajorBit)
+  {
+    Eigen::MatrixXf mat_yz = cloud.getMatrixXfMap (2, 4, 1);
+    EXPECT_EQ (mat_yz.cols (), 2);
+    EXPECT_EQ (mat_yz.rows (), cloud.width);
+    EXPECT_EQ (mat_yz (0, 0), 1);
+    EXPECT_EQ (mat_yz (cloud.width - 1, 1), 3 * cloud.width - 1);
+    std::uint32_t j = 1;
+    for (std::uint32_t i = 1; i < cloud.width*cloud.height; i+=4, j+=3)
+    {
+      Eigen::MatrixXf mat_yz = cloud.getMatrixXfMap (2, 4, i);
+      EXPECT_EQ (mat_yz.cols (), 2);
+      EXPECT_EQ (mat_yz.rows (), cloud.width);
+      EXPECT_EQ (mat_yz (0, 0), j);
+    }
+  }
+  else
+  {
+    Eigen::MatrixXf mat_yz = cloud.getMatrixXfMap (2, 4, 1);
+    EXPECT_EQ (mat_yz.cols (), cloud.width);
+    EXPECT_EQ (mat_yz.rows (), 2);
+    EXPECT_EQ (mat_yz (0, 0), 1);
+    EXPECT_EQ (mat_yz (1, cloud.width - 1), 3 * cloud.width - 1);
+    std::uint32_t j = 1;
+    for (std::uint32_t i = 1; i < cloud.width*cloud.height; i+=4, j+=3)
+    {
+      Eigen::MatrixXf mat_yz = cloud.getMatrixXfMap (2, 4, i);
+      EXPECT_EQ (mat_yz.cols (), cloud.width);
+      EXPECT_EQ (mat_yz.rows (), 2);
+      EXPECT_EQ (mat_yz (0, 0), j);
+    }
+  }
+#endif
+}
+
+TEST_F (customAllocatorPointCloudTest, clear)
+{
+  cloud.insert (cloud.end (), PointXYZ (1, 1, 1));
+  EXPECT_EQ (cloud.size(), 1);
+  cloud.clear ();
+  EXPECT_EQ (cloud.width, 0);
+  EXPECT_EQ (cloud.height, 0);
+}
+
+TEST_F (customAllocatorPointCloudTest, insert)
+{
+  cloud.insert (cloud.end (), PointXYZ (1, 1, 1));
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 1);
+}
+
+TEST_F (customAllocatorPointCloudTest, insert_with_height)
+{
+  cloud.insert (cloud.end (), 5, PointXYZ (1, 1, 1));
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 5);
+}
+
+TEST_F (customAllocatorPointCloudTest, erase_at_position)
+{
+  cloud.insert (cloud.end (), 5, PointXYZ (1, 1, 1));
+  cloud.erase (cloud.end () - 1);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 4);
+}
+
+TEST_F (customAllocatorPointCloudTest, erase_with_iterator)
+{
+  cloud.insert (cloud.end (), 5, PointXYZ (1, 1, 1));
+  cloud.erase (cloud.begin (), cloud.end ());
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 0);
+}
+
+TEST_F (customAllocatorPointCloudTest, emplace)
+{
+  cloud.emplace (cloud.end (), 1, 1, 1);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 1);
+}
+
+TEST_F (customAllocatorPointCloudTest, emplace_back)
+{
+  auto& new_point = cloud.emplace_back (1, 1, 1);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 1);
+  EXPECT_EQ (&new_point, &cloud.back ());
+}
+
+TEST_F (customAllocatorPointCloudTest, resize_with_count_elements)
+{
+  cloud.resize (640*360);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640*360);
+}
+
+TEST_F (customAllocatorPointCloudTest, resize_with_new_width_and_height)
+{
+  cloud.resize (640, 480);
+  EXPECT_TRUE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640);
+  EXPECT_EQ (cloud.height, 480);
+}
+
+TEST_F (customAllocatorPointCloudTest, resize_with_initialized_count_elements)
+{
+  cloud.resize (640*360, PointXYZ (1, 1, 1));
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640*360);
+}
+
+TEST_F (customAllocatorPointCloudTest, resize_with_initialized_count_and_new_width_and_height)
+{
+  cloud.resize (640, 480, PointXYZ (1, 1, 1));
+  EXPECT_TRUE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_with_copies)
+{
+  cloud.assign (640*360, PointXYZ (1, 1, 1));
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640*360);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_with_new_width_and_height_copies)
+{
+  cloud.assign(640, 480, PointXYZ (1, 1, 1));
+  EXPECT_TRUE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_with_copies_in_range)
+{
+  std::vector<PointXYZ> pointVec;
+  pointVec.resize (640*360, PointXYZ (2, 3, 4));
+  cloud.assign (pointVec.begin(), pointVec.end());
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640*360);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_with_copies_in_range_and_new_width)
+{
+  std::vector<PointXYZ> pointVec;
+  pointVec.resize (640*360, PointXYZ (2, 3, 4));
+  cloud.assign (pointVec.begin(), pointVec.end(), 640);
+  EXPECT_TRUE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_mismatch_size_and_width_height)
+{
+  std::vector<PointXYZ> pointVec;
+  pointVec.resize (640*480, PointXYZ (7, 7, 7));
+  cloud.assign (pointVec.begin(), pointVec.end(), 460);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 640*480);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_initializer_list)
+{
+  cloud.assign ({PointXYZ (3, 4, 5), PointXYZ (3, 4, 5), PointXYZ (3, 4, 5)});
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 3);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_initializer_list_with_new_width)
+{
+  cloud.assign ({PointXYZ (3, 4, 5), PointXYZ (3, 4, 5), PointXYZ (3, 4, 5), PointXYZ (3, 4, 5)}, 2);
+  EXPECT_TRUE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 2);
+}
+
+TEST_F (customAllocatorPointCloudTest, assign_initializer_list_with_unorganized_cloud)
+{
+  cloud.assign ({PointXYZ (3, 4, 5), PointXYZ (3, 4, 5), PointXYZ (3, 4, 5)}, 6);
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 3);
+}
+
+TEST_F (customAllocatorPointCloudTest, push_back_to_unorganized_cloud)
+{
+  cloud.push_back (PointXYZ (3, 4, 5));
+  EXPECT_FALSE (cloud.isOrganized ());
+  EXPECT_EQ (cloud.width, 1);
+}
+
+TEST_F (customAllocatorPointCloudTest, push_back_to_organized_cloud)
+{
+  cloud.resize (80, 80, PointXYZ (1, 1, 1));
+  EXPECT_TRUE (cloud.isOrganized ());
+  cloud.push_back (PointXYZ (3, 4, 5));
+  EXPECT_EQ (cloud.width, (80*80) + 1);
+}
+
+
 /* ---[ */
 int
 main (int argc, char** argv)
